@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"container/list"
 	"log"
+	"rgehrsitz/rexrete/pkg/rules"
 	"runtime/debug"
 )
 
@@ -347,6 +348,105 @@ func (n Network) updateNewNodeWithMatchesAbove(node IReteNode) {
 		for e := parent.GetItems().Front(); e != nil; e = e.Next() {
 			t := e.Value.(*Token)
 			node.LeftActivation(t, nil, nil)
+		}
+	}
+}
+
+func (n *Network) LoadRuleFromObject(rule rules.Rule) error {
+	// Step 1: Handle 'all' conditions - these will be processed as a series of AND-linked conditions
+	for _, cond := range rule.Conditions.All {
+		if err := n.addCondition(cond, true); err != nil {
+			return err // Handle or propagate error
+		}
+	}
+
+	// Step 2: Handle 'any' conditions - these may require more complex handling to represent OR logic
+	if len(rule.Conditions.Any) > 0 {
+		if err := n.addAnyConditions(rule.Conditions.Any); err != nil {
+			return err // Handle or propagate error
+		}
+	}
+
+	// Step 3: Handle the rule's action/event part
+	// This will likely involve setting up a way to trigger the defined event when conditions are met
+	// Placeholder for now
+
+	return nil
+}
+
+func (n *Network) addCondition(cond rules.Condition, isAll bool) error {
+	// Find or create a ConstantTestNode for the condition
+	var testNode *ConstantTestNode
+	var exists bool
+
+	// Scan existing ConstantTestNodes for a match
+	// This is a simplification. In practice, you may need a more sophisticated way to manage and search nodes.
+	for e := n.alphaRoot.children.Front(); e != nil && !exists; e = e.Next() {
+		node := e.Value.(*ConstantTestNode)
+		if node.fieldToTest == mapConditionToFieldIndex(cond.Fact) && node.fieldMustEqual == cond.Value {
+			testNode = node
+			exists = true
+		}
+	}
+
+	if !exists {
+		// Create a new ConstantTestNode if not found
+		testNode = &ConstantTestNode{
+			fieldToTest:    mapConditionToFieldIndex(cond.Fact),
+			fieldMustEqual: cond.Value.(string), // Assuming Value is always a string for simplification
+			outputMemory:   &AlphaMemory{items: list.New(), successors: list.New()},
+			children:       list.New(),
+		}
+		n.alphaRoot.children.PushBack(testNode) // Attach new node to alphaRoot for now
+	}
+
+	// For 'all' conditions, you may need to further process or link this node within the network
+	// For example, linking ConstantTestNodes to a BetaNode if representing complex conditions
+	// This part of logic needs further development based on your specific network structure and rule logic
+
+	return nil
+}
+
+func (n *Network) addAnyConditions(conds []Condition) error {
+	orNode := NewOrNode() // Create a new OrNode to aggregate 'any' conditions
+
+	for _, cond := range conds {
+		testNode, err := n.createTestNodeFromCondition(cond) // Reuse logic to create/find ConstantTestNodes
+		if err != nil {
+			return err
+		}
+		orNode.children = append(orNode.children, testNode)
+		// Link testNode to orNode here if necessary; this might require adjusting your model
+	}
+
+	// After all conditions are added, setup a mechanism to check activation
+	// This could be part of the network's evaluation cycle, where OrNodes are checked for any activated children
+	// Placeholder: Add orNode to a collection for evaluation or further processing
+
+	return nil
+}
+
+func (n *Network) createTestNodeFromCondition(cond Condition) (*ConstantTestNode, error) {
+	// Similar logic to addCondition, but return the created/found ConstantTestNode
+	// This function should encapsulate the creation and retrieval logic to avoid duplication
+}
+
+type OrNode struct {
+	children  []*ConstantTestNode
+	activated bool
+}
+
+func NewOrNode() *OrNode {
+	return &OrNode{children: make([]*ConstantTestNode, 0), activated: false}
+}
+
+// Activation logic for OrNode: Activates if any child node is activated.
+func (on *OrNode) activateIfAny() {
+	for _, child := range on.children {
+		// Assuming there's a way to check if a child node is activated; this might involve extending ConstantTestNode
+		if child.IsActivated() { // IsActivated is a hypothetical method; implementation depends on your system's specifics
+			on.activated = true
+			break
 		}
 	}
 }
